@@ -1,0 +1,5 @@
+{
+   "id": "bib-hierarchy-view",
+   "title": "BIB Hierarchy View",
+   "description": "App which shows a hierarchical view of a BIB record, including its holdings and items. Should allow printing of the view"
+}
