@@ -1,4 +1,4 @@
-section>h1 {
+section > h1 {
   padding: 5px 10px;
   border-radius: 4px;
   margin-top: 10px;
@@ -28,4 +28,35 @@ pre {
 pre,
 textarea {
   font-size: 0.9em;
+}
+
+@media print {
+  .printMe {
+    visibility: visible;
+  };
+  html, body {
+    width: 210mm;
+    height: 297mm;
+  };
+  body, page[size="A4"] {
+    margin: 0;
+    box-shadow: 0;
+  }
+  .buttons {
+    visibility: hidden;
+  };
+}
+page[size="A4"] {
+  background: white;
+  width: 21cm;
+  height: 29.7cm;
+  display: block;
+  margin: 0 auto;
+  margin-bottom: 0.5cm;
+  box-shadow: 0 0 0.5cm rgba(0,0,0,0.5);
+}
+@page {
+  size: A4;
+  
+  margin: 0;
 }

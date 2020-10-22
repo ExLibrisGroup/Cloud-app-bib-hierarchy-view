@@ -1,0 +1,15 @@
+strong{
+  font-weight: bold;
+}
+.example-tree-progress-bar {
+  margin-left: calc($width - 100px);
+}
+
+ul,li {
+  list-style-type: none;
+}
+.mat-icon-button {
+    width:  auto;
+    height: unset;
+    line-height: unset;
+}
