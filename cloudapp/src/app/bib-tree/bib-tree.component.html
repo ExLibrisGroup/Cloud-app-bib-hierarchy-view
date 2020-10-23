@@ -1,21 +1,22 @@
 <mat-tree [dataSource]="dataSource" [treeControl]="treeControl">
   <mat-tree-node class="node" *matTreeNodeDef="let node" matTreeNodePadding>
     <button mat-icon-button disabled></button>
-    <mat-icon>{{getIcon(node.type)}}</mat-icon>
+    <mat-icon>{{ getIcon(node.type) }}</mat-icon>
     <div class="key" *ngIf="node.stringKey !== ''">
-     <strong>{{ node.stringKey + " :  " }} </strong>
+      <strong>{{ node.stringKey + " :  " }} </strong>
     </div>
     {{ node.stringVal }}
   </mat-tree-node>
+
   <mat-tree-node class="node" *matTreeNodeDef="let node; when: hasChild" matTreeNodePadding>
     <button mat-icon-button [attr.aria-label]="'Toggle ' + node.item" matTreeNodeToggle>
       <mat-icon class="mat-icon-rtl-mirror">
         {{ treeControl.isExpanded(node) ? "expand_more" : "chevron_right" }}
       </mat-icon>
     </button>
-    <mat-icon>{{getIcon(node.type)}}</mat-icon>
+    <mat-icon>{{ getIcon(node.type) }}</mat-icon>
     <div class="key" *ngIf="node.stringKey !== ''">
-    <strong>{{ node.stringKey + " :  " }} </strong>
+      <strong>{{ node.stringKey + " :  " }} </strong>
     </div>
     {{ node.stringVal }}
     <mat-progress-bar
@@ -23,5 +24,9 @@
       mode="indeterminate"
       class="example-tree-progress-bar"
     ></mat-progress-bar>
+  </mat-tree-node>
+
+  <mat-tree-node *matTreeNodeDef="let node; when: isLoad">
+    <button mat-button (click)="onLoadMore(node)">{{node.stringVal}}</button>
   </mat-tree-node>
 </mat-tree>

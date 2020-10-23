@@ -10,7 +10,7 @@ import {
   RestErrorResponse,
 } from "@exlibris/exl-cloudapp-angular-lib";
 import { ToastrService } from "ngx-toastr";
-import { BehaviorSubject, merge, Observable, Subscription } from "rxjs";
+import { BehaviorSubject, EMPTY, merge, Observable, Subscription } from "rxjs";
 import { catchError, map, switchMap } from "rxjs/operators";
 export enum NodeType {
   ENTITY = "ENTITY",
@@ -32,7 +32,7 @@ export class DynamicFlatNode {
   ) {}
 }
 const DEF_ITEMS_LIMIT = 4;
-
+const MAX_API_LIMIT = 100;
 /**
  * Database for dynamic data. When expanding a node in the tree, the data source will need to fetch
  * the descendants data from the database.
@@ -41,8 +41,7 @@ const DEF_ITEMS_LIMIT = 4;
 export class DynamicDatabase implements OnInit, OnDestroy {
   constructor(
     private eventService: CloudAppEventsService,
-    private restService: CloudAppRestService,
-    private toaster: ToastrService
+    private restService: CloudAppRestService
   ) {}
   ngOnInit() {}
 
@@ -59,9 +58,8 @@ export class DynamicDatabase implements OnInit, OnDestroy {
     }
   }
   private errorCallback(err: any, caught: Observable<any>) {
-    this.toaster.error((err as RestErrorResponse).message);
     console.error(err);
-    return caught;
+    return EMPTY;
   }
 
   private pageToDynamicNodes(pageInfo: PageInfo, level: number = 1): DynamicFlatNode[] {
@@ -83,29 +81,28 @@ export class DynamicDatabase implements OnInit, OnDestroy {
     }
     return nodes;
   }
-  getChildren(node: DynamicFlatNode, limit?): Observable<any> {
+  getChildren(node: DynamicFlatNode, limit = DEF_ITEMS_LIMIT): Observable<any> {
     switch (node.type) {
       case NodeType.ENTITY:
         return this.restService
           .call(node.item.link)
           .pipe(switchMap((res) => this.restService.call(res.holdings.link)));
       case NodeType.HOLDINGS:
-        return this.restService.call(node.item.link).pipe(
-          catchError(this.errorCallback),
-          switchMap((res) =>
-            this.restService.call(node.item.link + `/items`).pipe(catchError(this.errorCallback))
-          )
-        );
+        if (limit < MAX_API_LIMIT) {
+          return this.restService.call(node.item.link).pipe(
+            catchError(this.errorCallback),
+            switchMap((res) =>
+              this.restService
+                .call(node.item.link + `/items?limit=${limit}`)
+                .pipe(catchError(this.errorCallback))
+            )
+          );
+        }
+        else{
+
+        }
       case NodeType.ITEMS:
         return this.restService.call(node.item.link).pipe(catchError(this.errorCallback));
-      // case NodeType.OBJECT:
-      //   return from(Object.entries(node.item)).pipe(
-      //     map((res) => {
-      //       let temp = {};
-      //       temp[res[0]] = res[1];
-      //       return temp;
-      //     })
-      //   );
     }
   }
 
@@ -122,7 +119,7 @@ export class DynamicDatabase implements OnInit, OnDestroy {
  */
 export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   dataChange = new BehaviorSubject<DynamicFlatNode[]>([]);
-
+  itemLimits = new Map<string, number>();
   get data(): DynamicFlatNode[] {
     return this.dataChange.value;
   }
@@ -167,9 +164,9 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   /**
    * Toggle the node, remove from display list
    */
-  toggleNode(node: DynamicFlatNode, expand: boolean) {
+  toggleNode(node: DynamicFlatNode, expand: boolean, limit = DEF_ITEMS_LIMIT) {
     node.isLoading = true;
-    this._database.getChildren(node).subscribe({
+    this._database.getChildren(node, limit).subscribe({
       next: (children) => {
         console.log("Children", children);
         this.toggleAfterSubscribed(node, expand, children);
@@ -255,23 +252,20 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
           new DynamicFlatNode(
             element,
             "Item",
-            element.item_data?.barcode +
-              (element.item_data?.base_status?.desc
-                ? "/" + element.item_data.base_status.desc
-                : "") +
-              (element.item_data?.physical_material_type?.desc
-                ? "/" + element.item_data?.physical_material_type?.desc
-                : ""),
+            this.formatItem(element),
             NodeType.ITEMS,
             node.level + 1,
             false
           )
         );
       });
-      if (children?.total_record_count > DEF_ITEMS_LIMIT) {
+      this.itemLimits.has(node.stringVal)
+        ? null
+        : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
+      if (children?.total_record_count > this.itemLimits.get(node.stringVal)) {
         nodes.push(
           new DynamicFlatNode(
-            null,
+            { parent: node, total_record_count: children.total_record_count }, //The item on load more is the parent node
             "",
             `Load more .. (Total of ${children.total_record_count})`,
             NodeType.LOAD,
@@ -283,22 +277,32 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     }
     return nodes;
   }
-  // private handleObjectNode(children: Object, node: DynamicFlatNode) {
-  //   const nodes = [];
-  //   for (let [key, val] of Object.entries(children)) {
-  //     console.log(key, val);
-  //     let temp = {};
-  //     temp[key] = val;
-  //     if (Array.isArray(val) && val.length === 1) {
-  //       temp = {};
-  //       temp[key] = val;
-  //       nodes.push(new DynamicFlatNode(val[0], "", val[0], NodeType.OBJECT, node.level + 1, false));
-  //     } else {
-  //       nodes.push(new DynamicFlatNode(val, "", val, NodeType.OBJECT, node.level + 1, false));
-  //     }
-  //   }
-  //   return nodes;
-  // }
+
+  private formatItem(element: any): string {
+    return (
+      element.item_data?.barcode +
+      (element.item_data?.base_status?.desc ? "/" + element.item_data.base_status.desc : "") +
+      (element.item_data?.physical_material_type?.desc
+        ? "/" + element.item_data?.physical_material_type?.desc
+        : "") +
+      `/${element.item_data.pid}`
+    );
+  }
+  public updateLimits(node: DynamicFlatNode) {
+    console.log(node); //StringVal of parent is used as a key (is unique)
+    let parent = node.item.parent;
+    let maxLimit = Math.min(
+      node.item.total_record_count + 1,
+      this.itemLimits.get(parent.stringVal)*2
+    );
+    this.itemLimits.has(parent.stringVal)
+      ? this.itemLimits.set(parent.stringVal, maxLimit)
+      : this.itemLimits.set(parent.stringVal, DEF_ITEMS_LIMIT * 2);
+    let limit = this.itemLimits.get(parent.stringVal);
+    console.log(limit, "Limit", this.itemLimits);
+    this.toggleNode(parent, false);
+    this.toggleNode(parent, true, limit);
+  }
 }
 
 /**
@@ -318,6 +322,7 @@ export class BibDynamicTree {
   ]);
   private pageLoad$: Subscription;
   private database: DynamicDatabase;
+
   ngOnInit() {
     this.pageLoad$ = this.eventService.onPageLoad((res) => {
       if (res.entities.length > 0) {
@@ -329,7 +334,6 @@ export class BibDynamicTree {
         });
       }
     });
-    setTimeout(()=>window.print(),2000)
   }
 
   constructor(database: DynamicDatabase, private eventService: CloudAppEventsService) {
@@ -352,6 +356,23 @@ export class BibDynamicTree {
 
   isExpandable = (node: DynamicFlatNode) => node.expandable;
 
+  isNotLoadNode = (_: number, _nodeData: DynamicFlatNode) => _nodeData.type !== NodeType.LOAD;
+
   hasChild = (_: number, _nodeData: DynamicFlatNode) => _nodeData.expandable;
+
+  isLoad = (_: number, _nodeData: DynamicFlatNode) => {
+    let condition = _nodeData.type === NodeType.LOAD;
+    if (_nodeData.item.parent && this.dataSource.itemLimits.has(_nodeData.item.parent.stringVal)) {
+      condition =
+        condition &&
+        this.dataSource.itemLimits.get(_nodeData.item.parent.stringVal) <
+          _nodeData.item.total_record_count + 1;
+    }
+    return condition;
+  };
   getIcon = (type) => this.icons.get(type);
+
+  onLoadMore(node: DynamicFlatNode) {
+    this.dataSource.updateLimits(node);
+  }
 }
