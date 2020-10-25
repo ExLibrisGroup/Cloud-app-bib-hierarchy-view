@@ -24,7 +24,14 @@ pre {
   overflow: auto;
   max-height: 200px;
 }
+div.title {
+  display: flex;
+  margin-top: 10px;
+}
 
+div.title a {
+  margin-left: auto;
+}
 pre,
 textarea {
   font-size: 0.9em;
@@ -33,18 +40,24 @@ textarea {
 @media print {
   .printMe {
     visibility: visible;
-  };
-  html, body {
+  }
+  .error
+  {
+    visibility: hidden;
+  }
+  html,
+  body {
     width: 210mm;
     height: 297mm;
-  };
-  body, page[size="A4"] {
+  }
+  body,
+  page[size="A4"] {
     margin: 0;
     box-shadow: 0;
   }
   .buttons {
     visibility: hidden;
-  };
+  }
 }
 page[size="A4"] {
   background: white;
@@ -53,10 +66,10 @@ page[size="A4"] {
   display: block;
   margin: 0 auto;
   margin-bottom: 0.5cm;
-  box-shadow: 0 0 0.5cm rgba(0,0,0,0.5);
+  box-shadow: 0 0 0.5cm rgba(0, 0, 0, 0.5);
 }
 @page {
   size: A4;
-  
+
   margin: 0;
 }

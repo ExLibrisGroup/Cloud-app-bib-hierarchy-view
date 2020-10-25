@@ -6,10 +6,11 @@ import {
   CloudAppRestService,
   Entity,
   EntityType,
+  HttpMethod,
   PageInfo,
+  Request,
   RestErrorResponse,
 } from "@exlibris/exl-cloudapp-angular-lib";
-import { ToastrService } from "ngx-toastr";
 import { BehaviorSubject, EMPTY, merge, Observable, Subscription } from "rxjs";
 import { catchError, map, switchMap } from "rxjs/operators";
 export enum NodeType {
@@ -97,9 +98,7 @@ export class DynamicDatabase implements OnInit, OnDestroy {
                 .pipe(catchError(this.errorCallback))
             )
           );
-        }
-        else{
-
+        } else {
         }
       case NodeType.ITEMS:
         return this.restService.call(node.item.link).pipe(catchError(this.errorCallback));
@@ -168,7 +167,6 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     node.isLoading = true;
     this._database.getChildren(node, limit).subscribe({
       next: (children) => {
-        console.log("Children", children);
         this.toggleAfterSubscribed(node, expand, children);
       },
       error: (err: RestErrorResponse) => {
@@ -211,10 +209,6 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
         break;
       case NodeType.ITEMS:
         break;
-      // case NodeType.OBJECT:
-      //   nodes = this.handleObjectNode(children, node);
-      //   console.log("handle object");
-      //   break;
     }
     return nodes;
   }
@@ -289,17 +283,16 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     );
   }
   public updateLimits(node: DynamicFlatNode) {
-    console.log(node); //StringVal of parent is used as a key (is unique)
+    //StringVal of parent is used as a key (is unique)
     let parent = node.item.parent;
     let maxLimit = Math.min(
       node.item.total_record_count + 1,
-      this.itemLimits.get(parent.stringVal)*2
+      this.itemLimits.get(parent.stringVal) * 2
     );
     this.itemLimits.has(parent.stringVal)
       ? this.itemLimits.set(parent.stringVal, maxLimit)
       : this.itemLimits.set(parent.stringVal, DEF_ITEMS_LIMIT * 2);
     let limit = this.itemLimits.get(parent.stringVal);
-    console.log(limit, "Limit", this.itemLimits);
     this.toggleNode(parent, false);
     this.toggleNode(parent, true, limit);
   }
