@@ -11,7 +11,7 @@ import {
   Request,
   RestErrorResponse,
 } from "@exlibris/exl-cloudapp-angular-lib";
-import { BehaviorSubject, EMPTY, merge, Observable, Subscription } from "rxjs";
+import { BehaviorSubject, EMPTY, forkJoin, merge, Observable, Subscription } from "rxjs";
 import { catchError, map, switchMap } from "rxjs/operators";
 export enum NodeType {
   ENTITY = "ENTITY",
@@ -70,7 +70,7 @@ export class DynamicDatabase implements OnInit, OnDestroy {
         nodes.push(
           new DynamicFlatNode(
             entity,
-            "Entity",
+            "Bib",
             entity.id + " " + entity.description,
             NodeType.ENTITY,
             level,
@@ -99,6 +99,26 @@ export class DynamicDatabase implements OnInit, OnDestroy {
             )
           );
         } else {
+          let offset = 0;
+          let current = MAX_API_LIMIT;
+          let observables = [];
+          while (limit > 0) {
+            observables.push(
+              this.restService.call(node.item.link).pipe(
+                catchError(this.errorCallback),
+                switchMap((res) =>
+                  this.restService
+                    .call(node.item.link + `/items?limit=${current}?offset=${offset}`)
+                    .pipe(catchError(this.errorCallback))
+                )
+              )
+            );
+            offset += current;
+            limit -= current;
+            current = limit % current;
+            console.log("limit", limit, "current", current); //TODO Check that working
+          }
+          return forkJoin(observables);
         }
       case NodeType.ITEMS:
         return this.restService.call(node.item.link).pipe(catchError(this.errorCallback));
@@ -163,9 +183,12 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   /**
    * Toggle the node, remove from display list
    */
-  toggleNode(node: DynamicFlatNode, expand: boolean, limit = DEF_ITEMS_LIMIT) {
+  toggleNode(node: DynamicFlatNode, expand: boolean) {
     node.isLoading = true;
-    this._database.getChildren(node, limit).subscribe({
+    this.itemLimits.has(node.stringVal)
+      ? null
+      : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
+    this._database.getChildren(node, this.itemLimits.get(node.stringVal)).subscribe({
       next: (children) => {
         this.toggleAfterSubscribed(node, expand, children);
       },
@@ -253,9 +276,6 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
           )
         );
       });
-      this.itemLimits.has(node.stringVal)
-        ? null
-        : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
       if (children?.total_record_count > this.itemLimits.get(node.stringVal)) {
         nodes.push(
           new DynamicFlatNode(
@@ -292,9 +312,8 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     this.itemLimits.has(parent.stringVal)
       ? this.itemLimits.set(parent.stringVal, maxLimit)
       : this.itemLimits.set(parent.stringVal, DEF_ITEMS_LIMIT * 2);
-    let limit = this.itemLimits.get(parent.stringVal);
     this.toggleNode(parent, false);
-    this.toggleNode(parent, true, limit);
+    this.toggleNode(parent, true);
   }
 }
 
@@ -306,7 +325,7 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   templateUrl: "bib-tree.component.html",
   styleUrls: ["bib-tree.component.scss"],
 })
-export class BibDynamicTree {
+export class BibDynamicTree implements OnDestroy, OnInit {
   icons = new Map<NodeType, string>([
     [NodeType.ENTITY, "bookmarks"],
     [NodeType.HOLDINGS, "bookmark"],
@@ -327,6 +346,9 @@ export class BibDynamicTree {
         });
       }
     });
+  }
+  ngOnDestroy() {
+    this.pageLoad$.unsubscribe();
   }
 
   constructor(database: DynamicDatabase, private eventService: CloudAppEventsService) {
