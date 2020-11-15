@@ -1,11 +1,9 @@
+<div class="toShow" *ngIf="toShow; else no_records">
 
-<div class="toShow"*ngIf="toShow;else no_records"><div class="buttons">
-  <button mat-stroked-button color="primary" style="float:right" (click)="onPrint()">Print</button>
-</div>
-<div class="printMe">
-  <app-bib-tree></app-bib-tree>
-</div>
+  <div class="printMe">
+    <app-bib-tree (noNodes)="toShow = $event"></app-bib-tree>
+  </div>
 </div>
 <ng-template #no_records>
-  <section><h1>Please search for items</h1></section>
+  <section><h1>Please search for bib records</h1></section>
 </ng-template>

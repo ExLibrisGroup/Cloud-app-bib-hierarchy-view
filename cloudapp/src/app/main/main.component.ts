@@ -9,18 +9,18 @@ import { CloudAppEventsService, PageInfo } from "@exlibris/exl-cloudapp-angular-
 })
 export class MainComponent implements OnInit, OnDestroy {
   pageLoad$: Subscription;
-  toShow: boolean;
+  toShow: boolean = false;
   constructor(private eventService: CloudAppEventsService) {}
 
   ngOnInit() {
     this.pageLoad$ = this.eventService.onPageLoad((pageInfo: PageInfo) => {
-      this.toShow = !!(pageInfo?.entities?.length !== 0);
+      if (pageInfo && pageInfo.entities) {
+        this.toShow = !!(pageInfo?.entities?.length !== 0);
+      }
     });
   }
   ngOnDestroy() {
     this.pageLoad$.unsubscribe();
   }
-  onPrint() {
-    window.print();
-  }
+
 }

@@ -12,5 +12,12 @@
          "popups": true,
          "modals": true
       }
+   },
+   "icon": {
+      "type": "font",
+      "value": "fa fa-tree"
+   },
+   "pages": {
+      "help": "/#/help"
    }
 }

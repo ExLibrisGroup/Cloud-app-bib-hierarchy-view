@@ -17,6 +17,7 @@ import { MatInputModule } from "@angular/material/input";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import {MatSlideToggleModule} from '@angular/material/slide-toggle';
 import { BibDynamicTree } from "./bib-tree/bib-tree.component";
+import { HelpComponent } from './help/help.component';
 
 
 
@@ -28,7 +29,7 @@ export function getToastrModule() {
 }
 
 @NgModule({
-  declarations: [AppComponent, MainComponent,BibDynamicTree],
+  declarations: [AppComponent, MainComponent,BibDynamicTree, HelpComponent],
   imports: [
     MaterialModule,
     BrowserModule,

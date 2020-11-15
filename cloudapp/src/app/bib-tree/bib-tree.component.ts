@@ -1,6 +1,15 @@
+import { ToastrService } from "ngx-toastr";
 import { CollectionViewer, SelectionChange, DataSource } from "@angular/cdk/collections";
 import { FlatTreeControl } from "@angular/cdk/tree";
-import { Component, Injectable, Input, OnDestroy, OnInit } from "@angular/core";
+import {
+  Component,
+  EventEmitter,
+  Injectable,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+} from "@angular/core";
 import {
   CloudAppEventsService,
   CloudAppRestService,
@@ -11,7 +20,7 @@ import {
   Request,
   RestErrorResponse,
 } from "@exlibris/exl-cloudapp-angular-lib";
-import { BehaviorSubject, EMPTY, forkJoin, merge, Observable, Subscription } from "rxjs";
+import { BehaviorSubject, EMPTY, forkJoin, merge, Observable, of, Subscription } from "rxjs";
 import { catchError, map, switchMap } from "rxjs/operators";
 export enum NodeType {
   ENTITY = "ENTITY",
@@ -42,7 +51,8 @@ const MAX_API_LIMIT = 100;
 export class DynamicDatabase implements OnInit, OnDestroy {
   constructor(
     private eventService: CloudAppEventsService,
-    private restService: CloudAppRestService
+    private restService: CloudAppRestService,
+    private toastr: ToastrService
   ) {}
   ngOnInit() {}
 
@@ -53,36 +63,39 @@ export class DynamicDatabase implements OnInit, OnDestroy {
       return new Observable<PageInfo>((observer) => {
         observer.next(pageInfo);
         observer.complete();
-      }).pipe(map(this.pageToDynamicNodes));
+      }).pipe(switchMap(this.pageToDynamicNodes));
     } else {
-      return this.eventService.getPageMetadata().pipe(map(this.pageToDynamicNodes));
+      return this.eventService.getPageMetadata().pipe(switchMap(this.pageToDynamicNodes));
     }
   }
   private errorCallback(err: any, caught: Observable<any>) {
     console.error(err);
+
     return EMPTY;
   }
 
-  private pageToDynamicNodes(pageInfo: PageInfo, level: number = 1): DynamicFlatNode[] {
+  private pageToDynamicNodes(pageInfo: PageInfo, level: number = 1): Observable<DynamicFlatNode[]> {
     let nodes: DynamicFlatNode[] = [];
     for (let entity of pageInfo.entities) {
-      if (entity?.type === EntityType.BIB_MMS) {
-        nodes.push(
-          new DynamicFlatNode(
-            entity,
-            "Bib",
-            entity.id + " " + entity.description,
-            NodeType.ENTITY,
-            level,
-            !!entity.link,
-            false
-          )
-        );
+      switch (entity?.type) {
+        case EntityType.BIB_MMS:
+          nodes.push(
+            new DynamicFlatNode(
+              entity,
+              "Bib",
+              entity.id + " " + entity.description,
+              NodeType.ENTITY,
+              level,
+              !!entity.link,
+              false
+            )
+          );
+        // case (EntityType.ITEM):
       }
     }
-    return nodes;
+    return of(nodes);
   }
-  getChildren(node: DynamicFlatNode, limit = DEF_ITEMS_LIMIT): Observable<any> {
+  getChildren(node: DynamicFlatNode, limit: number): Observable<any> {
     switch (node.type) {
       case NodeType.ENTITY:
         return this.restService
@@ -99,30 +112,35 @@ export class DynamicDatabase implements OnInit, OnDestroy {
             )
           );
         } else {
-          let offset = 0;
-          let current = MAX_API_LIMIT;
-          let observables = [];
-          while (limit > 0) {
-            observables.push(
-              this.restService.call(node.item.link).pipe(
-                catchError(this.errorCallback),
-                switchMap((res) =>
-                  this.restService
-                    .call(node.item.link + `/items?limit=${current}?offset=${offset}`)
-                    .pipe(catchError(this.errorCallback))
-                )
-              )
-            );
-            offset += current;
-            limit -= current;
-            current = limit % current;
-            console.log("limit", limit, "current", current); //TODO Check that working
-          }
-          return forkJoin(observables);
+          return this.getItemsRequest(limit, node); //TODO Not working yet .
         }
       case NodeType.ITEMS:
         return this.restService.call(node.item.link).pipe(catchError(this.errorCallback));
     }
+  }
+
+  private getItemsRequest(limit: number, node: DynamicFlatNode) {
+    let offset = 0; //TODO FIX
+    let current = MAX_API_LIMIT;
+    let observables = [];
+    while (limit > 0) {
+      observables.push(
+        this.restService.call(node.item.link).pipe(
+          catchError(this.errorCallback),
+          switchMap((res) =>
+            this.restService
+              .call(node.item.link + `/items?limit=${current}&?offset=${offset}`)
+              .pipe(catchError(this.errorCallback))
+          )
+        )
+      );
+      offset += current;
+      limit -= current;
+      current = limit % current;
+      console.log("limit", limit, "current", current);
+    }
+    console.log(observables);
+    return forkJoin(observables).pipe(map((res) => console.log(res)));
   }
 
   isExpandable(node: DynamicFlatNode): boolean {
@@ -139,6 +157,7 @@ export class DynamicDatabase implements OnInit, OnDestroy {
 export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   dataChange = new BehaviorSubject<DynamicFlatNode[]>([]);
   itemLimits = new Map<string, number>();
+
   get data(): DynamicFlatNode[] {
     return this.dataChange.value;
   }
@@ -196,7 +215,7 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
         this.toggleAfterSubscribed(node, expand, {});
         console.error(err);
       },
-    });
+    }); 
   }
   private toggleAfterSubscribed(node: DynamicFlatNode, expand: boolean, children: any) {
     const index = this.data.indexOf(node);
@@ -238,24 +257,30 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
 
   private handleEntityNode(children: any, node: DynamicFlatNode) {
     const nodes = [];
-    children.holding.forEach((element) => {
-      nodes.push(
-        new DynamicFlatNode(
-          element,
-          "Holdings",
-          element.holding_id +
-            " " +
-            (element?.location?.desc ? element?.location?.desc : "") +
-            "/" +
-            element?.library?.desc +
-            (element?.call_number ? "/" + element.call_number : ""),
-          NodeType.HOLDINGS,
-          node.level + 1,
-          true
-        )
-      );
-    });
-
+    console.log(children)
+    if (Object.keys(children).length === 0 ||!children.holding) {
+      // No holdings
+      nodes.push(new DynamicFlatNode(null, "", "No Holdings", NodeType.HOLDINGS, node.level + 1, false));
+    }
+    else{
+      children.holding.forEach((element) => {
+        nodes.push(
+          new DynamicFlatNode(
+            element,
+            "Holdings",
+            element.holding_id +
+              " " +
+              (element?.location?.desc ? element?.location?.desc : "") +
+              "/" +
+              element?.library?.desc +
+              (element?.call_number ? "/" + element.call_number : ""),
+            NodeType.HOLDINGS,
+            node.level + 1,
+            true
+          )
+        );
+      });
+    }
     return nodes;
   }
   private handleHoldingNode(children: any, node: DynamicFlatNode) {
@@ -326,6 +351,7 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   styleUrls: ["bib-tree.component.scss"],
 })
 export class BibDynamicTree implements OnDestroy, OnInit {
+  @Output("noNodes") noNodes = new EventEmitter<boolean>();
   icons = new Map<NodeType, string>([
     [NodeType.ENTITY, "bookmarks"],
     [NodeType.HOLDINGS, "bookmark"],
@@ -341,6 +367,12 @@ export class BibDynamicTree implements OnDestroy, OnInit {
         console.log("PageLoad", res);
         this.database.initialData().subscribe({
           next: (nodes) => {
+            if (nodes.length === 0) {
+              this.noNodes.emit(false);
+            } else {
+              this.noNodes.emit(true);
+            }
+
             this.dataSource.data = nodes;
           },
         });
@@ -376,18 +408,28 @@ export class BibDynamicTree implements OnDestroy, OnInit {
   hasChild = (_: number, _nodeData: DynamicFlatNode) => _nodeData.expandable;
 
   isLoad = (_: number, _nodeData: DynamicFlatNode) => {
-    let condition = _nodeData.type === NodeType.LOAD;
-    if (_nodeData.item.parent && this.dataSource.itemLimits.has(_nodeData.item.parent.stringVal)) {
-      condition =
-        condition &&
-        this.dataSource.itemLimits.get(_nodeData.item.parent.stringVal) <
-          _nodeData.item.total_record_count + 1;
+    if (_nodeData && _ && _nodeData.item) {
+      let condition = _nodeData.type === NodeType.LOAD;
+      if (
+        _nodeData.item.parent &&
+        this.dataSource.itemLimits.has(_nodeData.item.parent.stringVal)
+      ) {
+        condition =
+          condition &&
+          this.dataSource.itemLimits.get(_nodeData.item.parent.stringVal) <
+            _nodeData.item.total_record_count + 1;
+      }
+      return condition;
     }
-    return condition;
+    return false;
   };
   getIcon = (type) => this.icons.get(type);
 
   onLoadMore(node: DynamicFlatNode) {
     this.dataSource.updateLimits(node);
+  }
+
+  onPrint() {
+    window.print();
   }
 }

@@ -36,40 +36,54 @@ pre,
 textarea {
   font-size: 0.9em;
 }
-
-@media print {
-  .printMe {
-    visibility: visible;
-  }
-  .error
-  {
-    visibility: hidden;
-  }
-  html,
-  body {
-    width: 210mm;
-    height: 297mm;
-  }
-  body,
-  page[size="A4"] {
-    margin: 0;
-    box-shadow: 0;
-  }
-  .buttons {
-    visibility: hidden;
-  }
-}
-page[size="A4"] {
-  background: white;
-  width: 21cm;
-  height: 29.7cm;
-  display: block;
-  margin: 0 auto;
-  margin-bottom: 0.5cm;
-  box-shadow: 0 0 0.5cm rgba(0, 0, 0, 0.5);
-}
-@page {
-  size: A4;
-
-  margin: 0;
-}
+// .printMe {
+//   visibility: visible;
+//   overflow: visible;
+//   display: block !important; 
+//   float: none !important;
+//   overflow-y: visible !important;
+// }
+// @media print {
+//   .mat-drawer-container , .mat-drawer-content {
+//     overflow: visible !important;
+//   } 
+//   .printMe {
+//     visibility: visible;
+//     overflow: visible;
+//     display: block !important; 
+//     float: none !important;
+//     overflow-y: visible !important;
+//   }
+//   .error
+//   {
+//     visibility: hidden;
+//   }
+//   html,
+//   body {
+//     width: 210mm;
+//     height: 297mm;
+//   }
+//   body,
+//   page[size="A4"] {
+//     margin: 0;
+//     box-shadow: 0;
+//   }
+//   .buttons {
+//     visibility: hidden;
+//   }
+// }
+// page[size="A4"] {
+//   background: white;
+//   width: 21cm;
+//   height: 29.7cm;
+//   overflow: visible;
+//   display: block;
+//   margin: 0 auto;
+//   margin-bottom: 0.5cm;
+//   box-shadow: 0 0 0.5cm rgba(0, 0, 0, 0.5);
+// }
+// @page {
+//   size: A4;
+//   overflow: visible;
+//   margin: 0;
+// }
