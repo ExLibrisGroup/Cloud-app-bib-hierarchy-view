@@ -7,6 +7,10 @@
       "open": true
    },
    "author": "Liron Menda",
+   "entities": [
+      "ITEM",
+      "BIB_MMS"
+   ],
    "contentSecurity": {
       "sandbox": {
          "popups": true,

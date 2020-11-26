@@ -1,15 +1,7 @@
-import { ToastrService } from "ngx-toastr";
+import { HelperService } from "./../helper-service.service";
 import { CollectionViewer, SelectionChange, DataSource } from "@angular/cdk/collections";
 import { FlatTreeControl } from "@angular/cdk/tree";
-import {
-  Component,
-  EventEmitter,
-  Injectable,
-  Input,
-  OnDestroy,
-  OnInit,
-  Output,
-} from "@angular/core";
+import { Component, ElementRef, EventEmitter, Injectable, Input, OnDestroy, OnInit, Output } from "@angular/core";
 import {
   CloudAppEventsService,
   CloudAppRestService,
@@ -22,13 +14,15 @@ import {
 } from "@exlibris/exl-cloudapp-angular-lib";
 import { BehaviorSubject, EMPTY, forkJoin, merge, Observable, of, Subscription } from "rxjs";
 import { catchError, map, switchMap } from "rxjs/operators";
+
 export enum NodeType {
-  ENTITY = "ENTITY",
+  BIB = "BIB",
   HOLDINGS = "HOLDINGS",
   ITEMS = "ITEMS",
   LOAD = "LOAD",
   OBJECT = "OBJECT",
 }
+const NODE_DEF_CLASS = "node mat-tree-node hideIcons";
 /** Flat node with expandable and level information */
 export class DynamicFlatNode {
   constructor(
@@ -38,7 +32,9 @@ export class DynamicFlatNode {
     public type: NodeType,
     public level = 1,
     public expandable = false,
-    public isLoading = false
+    public isLoading = false,
+    public expanded = false,
+    public cssClass = NODE_DEF_CLASS
   ) {}
 }
 const DEF_ITEMS_LIMIT = 4;
@@ -48,99 +44,122 @@ const MAX_API_LIMIT = 100;
  * the descendants data from the database.
  */
 @Injectable({ providedIn: "root" })
-export class DynamicDatabase implements OnInit, OnDestroy {
-  constructor(
-    private eventService: CloudAppEventsService,
-    private restService: CloudAppRestService,
-    private toastr: ToastrService
-  ) {}
-  ngOnInit() {}
+export class DynamicDatabase {
+  constructor(private restService: CloudAppRestService, private helper: HelperService) {}
 
-  ngOnDestroy(): void {}
-
-  initialData(pageInfo?: PageInfo): Observable<DynamicFlatNode[]> {
-    if (pageInfo) {
-      return new Observable<PageInfo>((observer) => {
-        observer.next(pageInfo);
-        observer.complete();
-      }).pipe(switchMap(this.pageToDynamicNodes));
+  public initialData(entities?: any): Observable<DynamicFlatNode[]> {
+    if (entities) {
+      return this.pageToDynamicNodes(entities);
     } else {
-      return this.eventService.getPageMetadata().pipe(switchMap(this.pageToDynamicNodes));
+      return;
     }
   }
   private errorCallback(err: any, caught: Observable<any>) {
     console.error(err);
-
     return EMPTY;
   }
 
-  private pageToDynamicNodes(pageInfo: PageInfo, level: number = 1): Observable<DynamicFlatNode[]> {
+  public pageToDynamicNodes(entities: any, level: number = 0): Observable<DynamicFlatNode[]> {
     let nodes: DynamicFlatNode[] = [];
-    for (let entity of pageInfo.entities) {
-      switch (entity?.type) {
-        case EntityType.BIB_MMS:
-          nodes.push(
-            new DynamicFlatNode(
-              entity,
-              "Bib",
-              entity.id + " " + entity.description,
-              NodeType.ENTITY,
-              level,
-              !!entity.link,
-              false
-            )
-          );
-        // case (EntityType.ITEM):
-      }
+    for (let entity of entities) {
+      // switch (entity?.type) {
+      // case EntityType.BIB_MMS:
+      nodes.push(
+        new DynamicFlatNode(entity, "Bib", this.helper.formatBibEntity(entity), NodeType.BIB, level, true, false)
+      );
+      // break;
+      // case EntityType.ITEM: // for now item is not expandable
+      //   nodes.push(new DynamicFlatNode(entity, "Item", this.helper.formatItem(entity), NodeType.ITEMS, 1, false));
+      //   break;
     }
+    // }
     return of(nodes);
   }
-  getChildren(node: DynamicFlatNode, limit: number): Observable<any> {
+  getChildren(node: DynamicFlatNode, limit: number, nodes: DynamicFlatNode[], expand: boolean): Observable<any> {
     switch (node.type) {
-      case NodeType.ENTITY:
-        return this.restService
-          .call(node.item.link)
-          .pipe(switchMap((res) => this.restService.call(res.holdings.link)));
+      case NodeType.BIB:
+        return this.restService.call(node.item.holdings.link).pipe(
+          map((children) => {
+            return this.handleNodes(node, nodes, children);
+          })
+        );
       case NodeType.HOLDINGS:
-        if (limit < MAX_API_LIMIT) {
-          return this.restService.call(node.item.link).pipe(
-            catchError(this.errorCallback),
-            switchMap((res) =>
-              this.restService
-                .call(node.item.link + `/items?limit=${limit}`)
-                .pipe(catchError(this.errorCallback))
+        return this.restService.call(node.item.link).pipe(
+          catchError(this.errorCallback),
+          switchMap((res) =>
+            this.restService.call(node.item.link + `/items?limit=${limit}`).pipe(
+              catchError(this.errorCallback),
+              map((children) => {
+                return this.handleNodes(node, nodes, children, limit);
+              })
             )
-          );
-        } else {
-          return this.getItemsRequest(limit, node); //TODO Not working yet .
-        }
+          )
+        );
       case NodeType.ITEMS:
         return this.restService.call(node.item.link).pipe(catchError(this.errorCallback));
     }
   }
 
-  private getItemsRequest(limit: number, node: DynamicFlatNode) {
-    let offset = 0; //TODO FIX
-    let current = MAX_API_LIMIT;
-    let observables = [];
-    while (limit > 0) {
-      observables.push(
-        this.restService.call(node.item.link).pipe(
-          catchError(this.errorCallback),
-          switchMap((res) =>
-            this.restService
-              .call(node.item.link + `/items?limit=${current}&?offset=${offset}`)
-              .pipe(catchError(this.errorCallback))
-          )
-        )
-      );
-      offset += current;
-      limit -= current;
-      current = limit % current;
-      console.log("limit", limit, "current", current);
+  private handleNodes(node: DynamicFlatNode, nodes: any[], children: any, limit?: number) {
+    switch (node.type) {
+      case NodeType.BIB:
+        nodes = this.handleBibNode(children, node);
+        break;
+      case NodeType.HOLDINGS:
+        nodes = this.handleHoldingNode(children, node, limit);
+        break;
+      case NodeType.ITEMS:
+        break;
     }
-    console.log(observables);
-    return forkJoin(observables).pipe(map((res) => console.log(res)));
+    return nodes;
+  }
+
+  private handleBibNode(children: any, node: DynamicFlatNode) {
+    const nodes = [];
+    if (Object.keys(children).length === 0 || !children.holding) {
+      // No holdings
+      nodes.push(new DynamicFlatNode(null, "", "No Holdings", NodeType.HOLDINGS, node.level + 1, false));
+    } else {
+      children.holding.forEach((element) => {
+        nodes.push(
+          new DynamicFlatNode(
+            element,
+            "Holdings",
+            this.helper.formatHoldings(element),
+            NodeType.HOLDINGS,
+            node.level + 1,
+            true
+          )
+        );
+      });
+    }
+    return nodes;
+  }
+  private handleHoldingNode(children: any, node: DynamicFlatNode, limit: number) {
+    const nodes = [];
+    if (Object.keys(children).length === 0 || !children.item) {
+      // No Items
+      nodes.push(new DynamicFlatNode(null, "", "No Items", NodeType.ITEMS, node.level + 1, false));
+    } else {
+      children?.item.forEach((element) => {
+        nodes.push(
+          new DynamicFlatNode(element, "Item", this.helper.formatItem(element), NodeType.ITEMS, node.level + 1, false)
+        );
+      });
+      if (children?.total_record_count > limit) {
+        nodes.push(
+          new DynamicFlatNode(
+            { parent: node, total_record_count: children.total_record_count }, //The item on load more is the parent node
+            "",
+            `Load more .. (Total of ${children.total_record_count})`,
+            NodeType.LOAD,
+            node.level + 1,
+            false
+          )
+        );
+      }
+    }
+    return nodes;
   }
 
   isExpandable(node: DynamicFlatNode): boolean {
@@ -166,17 +185,11 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     this.dataChange.next(value);
   }
 
-  constructor(
-    private _treeControl: FlatTreeControl<DynamicFlatNode>,
-    private _database: DynamicDatabase
-  ) {}
+  constructor(private _treeControl: FlatTreeControl<DynamicFlatNode>, public _database: DynamicDatabase) {}
 
   connect(collectionViewer: CollectionViewer): Observable<DynamicFlatNode[]> {
     this._treeControl.expansionModel.changed.subscribe((change) => {
-      if (
-        (change as SelectionChange<DynamicFlatNode>).added ||
-        (change as SelectionChange<DynamicFlatNode>).removed
-      ) {
+      if ((change as SelectionChange<DynamicFlatNode>).added || (change as SelectionChange<DynamicFlatNode>).removed) {
         this.handleTreeControl(change as SelectionChange<DynamicFlatNode>);
       }
     });
@@ -198,42 +211,45 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
         .forEach((node) => this.toggleNode(node, false));
     }
   }
-
+  initialData(page) {
+    return this._database.initialData(page);
+  }
   /**
    * Toggle the node, remove from display list
    */
-  toggleNode(node: DynamicFlatNode, expand: boolean) {
+  toggleNode(node: DynamicFlatNode, expand: boolean, fullyExpand?: boolean) {
     node.isLoading = true;
-    this.itemLimits.has(node.stringVal)
-      ? null
-      : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
-    this._database.getChildren(node, this.itemLimits.get(node.stringVal)).subscribe({
-      next: (children) => {
-        this.toggleAfterSubscribed(node, expand, children);
+    if (!expand) {
+      this.toggleAfterSubscribed(node, expand, []);
+    }
+    this.itemLimits.has(node.stringVal) ? null : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
+    if (fullyExpand) {
+      expand ? this.itemLimits.set(node.stringVal, 999) : this.itemLimits.set(node.stringVal, DEF_ITEMS_LIMIT);
+    }
+    let nodes: DynamicFlatNode[] = [];
+    this._database.getChildren(node, this.itemLimits.get(node.stringVal), nodes, expand).subscribe({
+      next: (nodes) => {
+        this.toggleAfterSubscribed(node, expand, nodes);
       },
       error: (err: RestErrorResponse) => {
-        this.toggleAfterSubscribed(node, expand, {});
+        // this.toggleAfterSubscribed(node, expand, []);
         console.error(err);
       },
-    }); 
+    });
   }
-  private toggleAfterSubscribed(node: DynamicFlatNode, expand: boolean, children: any) {
+  private toggleAfterSubscribed(node: DynamicFlatNode, expand: boolean, nodes: DynamicFlatNode[]) {
     const index = this.data.indexOf(node);
-    if (!children || index < 0) {
-      // If no children, or cannot find the node, no op
+    if (index < 0) {
+      // If  cannot find the node, no op
       return;
     }
     if (expand) {
-      let nodes = [];
-      nodes = this.handleNodes(node, nodes, children);
+      node.expanded = true;
       this.data.splice(index + 1, 0, ...nodes);
     } else {
+      node.expanded = false;
       let count = 0;
-      for (
-        let i = index + 1;
-        i < this.data.length && this.data[i].level > node.level;
-        i++, count++
-      ) {}
+      for (let i = index + 1; i < this.data.length && this.data[i].level > node.level; i++, count++) {}
       this.data.splice(index + 1, count);
     }
 
@@ -241,102 +257,15 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
     this.dataChange.next(this.data);
     node.isLoading = false;
   }
-  private handleNodes(node: DynamicFlatNode, nodes: any[], children: any) {
-    switch (node.type) {
-      case NodeType.ENTITY:
-        nodes = this.handleEntityNode(children, node);
-        break;
-      case NodeType.HOLDINGS:
-        nodes = this.handleHoldingNode(children, node);
-        break;
-      case NodeType.ITEMS:
-        break;
-    }
-    return nodes;
-  }
 
-  private handleEntityNode(children: any, node: DynamicFlatNode) {
-    const nodes = [];
-    console.log(children)
-    if (Object.keys(children).length === 0 ||!children.holding) {
-      // No holdings
-      nodes.push(new DynamicFlatNode(null, "", "No Holdings", NodeType.HOLDINGS, node.level + 1, false));
-    }
-    else{
-      children.holding.forEach((element) => {
-        nodes.push(
-          new DynamicFlatNode(
-            element,
-            "Holdings",
-            element.holding_id +
-              " " +
-              (element?.location?.desc ? element?.location?.desc : "") +
-              "/" +
-              element?.library?.desc +
-              (element?.call_number ? "/" + element.call_number : ""),
-            NodeType.HOLDINGS,
-            node.level + 1,
-            true
-          )
-        );
-      });
-    }
-    return nodes;
-  }
-  private handleHoldingNode(children: any, node: DynamicFlatNode) {
-    const nodes = [];
-    if (Object.keys(children).length === 0) {
-      // No Items
-      nodes.push(new DynamicFlatNode(null, "", "No Items", NodeType.ITEMS, node.level + 1, false));
-    } else {
-      children?.item.forEach((element) => {
-        nodes.push(
-          new DynamicFlatNode(
-            element,
-            "Item",
-            this.formatItem(element),
-            NodeType.ITEMS,
-            node.level + 1,
-            false
-          )
-        );
-      });
-      if (children?.total_record_count > this.itemLimits.get(node.stringVal)) {
-        nodes.push(
-          new DynamicFlatNode(
-            { parent: node, total_record_count: children.total_record_count }, //The item on load more is the parent node
-            "",
-            `Load more .. (Total of ${children.total_record_count})`,
-            NodeType.LOAD,
-            node.level + 1,
-            false
-          )
-        );
-      }
-    }
-    return nodes;
-  }
-
-  private formatItem(element: any): string {
-    return (
-      element.item_data?.barcode +
-      (element.item_data?.base_status?.desc ? "/" + element.item_data.base_status.desc : "") +
-      (element.item_data?.physical_material_type?.desc
-        ? "/" + element.item_data?.physical_material_type?.desc
-        : "") +
-      `/${element.item_data.pid}`
-    );
-  }
-  public updateLimits(node: DynamicFlatNode) {
+  public updateLimits(node: DynamicFlatNode, fullyExpand: boolean) {
+    let multiplier = fullyExpand ? 1000 : 2;
     //StringVal of parent is used as a key (is unique)
     let parent = node.item.parent;
-    let maxLimit = Math.min(
-      node.item.total_record_count + 1,
-      this.itemLimits.get(parent.stringVal) * 2
-    );
+    let maxLimit = Math.min(node.item.total_record_count + 1, this.itemLimits.get(parent.stringVal) * multiplier);
     this.itemLimits.has(parent.stringVal)
       ? this.itemLimits.set(parent.stringVal, maxLimit)
-      : this.itemLimits.set(parent.stringVal, DEF_ITEMS_LIMIT * 2);
+      : this.itemLimits.set(parent.stringVal, DEF_ITEMS_LIMIT * multiplier);
     this.toggleNode(parent, false);
     this.toggleNode(parent, true);
   }
@@ -350,55 +279,93 @@ export class DynamicDataSource implements DataSource<DynamicFlatNode> {
   templateUrl: "bib-tree.component.html",
   styleUrls: ["bib-tree.component.scss"],
 })
-export class BibDynamicTree implements OnDestroy, OnInit {
+export class BibDynamicTree implements OnDestroy {
+  public loading: boolean = false;
   @Output("noNodes") noNodes = new EventEmitter<boolean>();
   icons = new Map<NodeType, string>([
-    [NodeType.ENTITY, "bookmarks"],
+    [NodeType.BIB, "bookmarks"],
     [NodeType.HOLDINGS, "bookmark"],
     [NodeType.ITEMS, "book"],
     [NodeType.LOAD, ""],
   ]);
   private pageLoad$: Subscription;
-  private database: DynamicDatabase;
-
+  // private database:DynamicDatabase;
   ngOnInit() {
-    this.pageLoad$ = this.eventService.onPageLoad((res) => {
-      if (res.entities.length > 0) {
-        console.log("PageLoad", res);
-        this.database.initialData().subscribe({
-          next: (nodes) => {
-            if (nodes.length === 0) {
-              this.noNodes.emit(false);
-            } else {
-              this.noNodes.emit(true);
-            }
-
-            this.dataSource.data = nodes;
-          },
-        });
-      }
-    });
+    this.pageLoad$ = this.eventService.onPageLoad(this.onPageLoad);
   }
   ngOnDestroy() {
     this.pageLoad$.unsubscribe();
   }
 
-  constructor(database: DynamicDatabase, private eventService: CloudAppEventsService) {
+  constructor(
+    public database: DynamicDatabase,
+    private eventService: CloudAppEventsService,
+    private restService: CloudAppRestService
+  ) {
     this.treeControl = new FlatTreeControl<DynamicFlatNode>(this.getLevel, this.isExpandable);
     this.dataSource = new DynamicDataSource(this.treeControl, database);
-    this.database = database;
-
-    database.initialData().subscribe({
-      next: (nodes) => {
-        this.dataSource.data = nodes;
-      },
-    });
   }
 
   treeControl: FlatTreeControl<DynamicFlatNode>;
 
   dataSource: DynamicDataSource;
+  /**
+   * Method that handles new page loads, get there record using api and passing it to the database
+   */
+  onPageLoad = (res: PageInfo) => {
+    if (res.entities.length > 0) {
+      console.log("PageLoad", res);
+      if (res) {
+        of(res)
+          .pipe(
+            switchMap((pageInfo: PageInfo) => {
+              let observables = [];
+              let linkSet = new Set<string>(); // To remove duplicates 
+              let re: RegExp = new RegExp("/bibs/[0-9]+");
+              for (let entity of pageInfo.entities) {
+                linkSet.add(re.exec(entity.link)[0])
+              }
+              for (const link of Array.from(linkSet.values()))
+              {
+                            observables.push(
+                  this.restService.call(link).pipe(
+                    map((res) => {
+                      return { ...res};
+                    })
+                  )
+                );
+              }
+  
+              return forkJoin(observables);
+            }),
+            switchMap((res) => {
+              return this.dataSource.initialData(res);
+            })
+          )
+          .subscribe({
+            next: (nodes) => {
+              if (nodes.length === 0) {
+                this.noNodes.emit(false);
+              } else {
+                this.noNodes.emit(true);
+              }
+              this.dataSource.data = nodes;
+            },
+          });
+      }
+    }
+  };
 
+  onHover(node: DynamicFlatNode, show: boolean) {
+    
+    if (show && node.cssClass.search('hideIcons')) {
+      node.cssClass = node.cssClass.replace("hideIcons", "showIcons");
+    }else if (!show && node.cssClass.search('showIcons'))
+    {
+      node.cssClass = node.cssClass.replace("showIcons","hideIcons");
+    }
+    console.log(node.cssClass)
+  }
   getLevel = (node: DynamicFlatNode) => node.level;
 
   isExpandable = (node: DynamicFlatNode) => node.expandable;
@@ -410,14 +377,10 @@ export class BibDynamicTree implements OnDestroy, OnInit {
   isLoad = (_: number, _nodeData: DynamicFlatNode) => {
     if (_nodeData && _ && _nodeData.item) {
       let condition = _nodeData.type === NodeType.LOAD;
-      if (
-        _nodeData.item.parent &&
-        this.dataSource.itemLimits.has(_nodeData.item.parent.stringVal)
-      ) {
+      if (_nodeData.item.parent && this.dataSource.itemLimits.has(_nodeData.item.parent.stringVal)) {
         condition =
           condition &&
-          this.dataSource.itemLimits.get(_nodeData.item.parent.stringVal) <
-            _nodeData.item.total_record_count + 1;
+          this.dataSource.itemLimits.get(_nodeData.item.parent.stringVal) < _nodeData.item.total_record_count + 1;
       }
       return condition;
     }
@@ -425,11 +388,71 @@ export class BibDynamicTree implements OnDestroy, OnInit {
   };
   getIcon = (type) => this.icons.get(type);
 
-  onLoadMore(node: DynamicFlatNode) {
-    this.dataSource.updateLimits(node);
+  onLoadMore(node: DynamicFlatNode, fully?: boolean) {
+    this.dataSource.updateLimits(node, fully);
   }
-
-  onPrint() {
+  fullyExpandNode(node: DynamicFlatNode) {
+    this.loading = true;
+    this.recFullyExpandNode(node);
+    let time = node.expanded ? 0 : 3000; //Takes more time to open than close
+    setTimeout(() => (this.loading = false), time);
+  }
+  recFullyExpandNode(node: DynamicFlatNode) {
+    if (this.isExpandable(node)) {
+      this.treeControl.toggle(node);
+      let data = this.dataSource.data;
+      let index = data.indexOf(node);
+      setTimeout(() => {
+        for (let i = index + 1; i < data.length && data[i].level > node.level; i++) {
+          if (this.isLoad(i, data[i])) {
+            this.onLoadMore(data[i], true);
+          } else {
+            this.recFullyExpandNode(data[i]);
+          }
+        }
+      }, 1000);
+    }
+  }
+  onScreenPrint() {
     window.print();
+  }
+  onNodePrint(node: DynamicFlatNode, nodeEl: any) {
+    this.loading = true;
+
+    this.recChangeChildrenClass(node, "node mat-tree-node hideIcons printMe");
+    this.changeNodeClasses(node);
+    setTimeout(() => {
+      window.print();
+      for (let j = 0; j < this.dataSource.data.length; j++) {
+        this.dataSource.data[j].cssClass = NODE_DEF_CLASS;
+      }
+      this.loading = false;
+    }, 1000);
+  }
+  /**
+   * Method That changes the other nodes but childes class to hidden
+   */
+  private changeNodeClasses(node: DynamicFlatNode) {
+    const index = this.dataSource.data.indexOf(node);
+    let i = 0;
+    for (i = index + 1; i < this.dataSource.data.length && this.dataSource.data[i].level > node.level; i++) {}
+    for (let j = 0; j < this.dataSource.data.length; j++) {
+      if (!(j >= index && j < i)) {
+        this.dataSource.data[j].cssClass = "hiddenClass node mat-tree-node";
+      }
+    }
+  }
+  /**
+   * Changes the child of node to the given class name
+   */
+  private recChangeChildrenClass(node: DynamicFlatNode, className: string) {
+    node.cssClass = className;
+    if (this.isExpandable(node)) {
+      let data = this.dataSource.data;
+      let index = data.indexOf(node);
+      for (let i = index + 1; i < data.length && data[i].level === node.level + 1; i++) {
+        this.recChangeChildrenClass(data[i], className);
+      }
+    }
   }
 }

@@ -1,11 +1,11 @@
-<div class="printMe">
-  <div class="buttons">
-    <button mat-fab color="primary" style="position: fixed;" (click)="onPrint()">
+<div class="printMe" id="mainWrapper">
+  <!-- <div class="buttons">
+    <button mat-fab color="primary" style="position: fixed" (click)="onScreenPrint()" matTooltip="Print all tree">
       <mat-icon>print</mat-icon>
     </button>
-  </div>
+  </div> -->
   <mat-tree [dataSource]="dataSource" [treeControl]="treeControl">
-    <mat-tree-node class="node" *matTreeNodeDef="let node" matTreeNodePadding>
+    <mat-tree-node [class]="node.cssClass" *matTreeNodeDef="let node" matTreeNodePadding>
       <button mat-icon-button disabled></button>
       <mat-icon>{{ getIcon(node.type) }}</mat-icon>
       <div class="key" *ngIf="node.stringKey !== ''">
@@ -13,27 +13,43 @@
       </div>
       {{ node.stringVal }}
     </mat-tree-node>
-
-    <mat-tree-node class="node" *matTreeNodeDef="let node; when: hasChild" matTreeNodePadding>
-      <button mat-icon-button [attr.aria-label]="'Toggle ' + node.item" matTreeNodeToggle>
-        <mat-icon class="mat-icon-rtl-mirror">
-          {{ treeControl.isExpanded(node) ? "expand_more" : "chevron_right" }}
-        </mat-icon>
-      </button>
-      <mat-icon>{{ getIcon(node.type) }}</mat-icon>
-      <div class="key" *ngIf="node.stringKey !== ''">
-        <strong>{{ node.stringKey + " :  " }} </strong>
+    <mat-tree-node [class]="node.cssClass" *matTreeNodeDef="let node; when: hasChild" matTreeNodePadding #currNode>
+      <div (mouseenter)="onHover(node, true)" (mouseleave)="onHover(node, false)" style="display: flex; width: 80%">
+        <button mat-icon-button [attr.aria-label]="'Toggle ' + node.item" matTreeNodeToggle>
+          <mat-icon class="mat-icon-rtl-mirror">
+            {{ treeControl.isExpanded(node) ? "expand_more" : "chevron_right" }}
+          </mat-icon>
+        </button>
+        <mat-icon>{{ getIcon(node.type) }}</mat-icon>
+        <div class="key" *ngIf="node.stringKey !== ''">
+          <strong>{{ node.stringKey + " :  " }} </strong>
+          {{ node.stringVal }}
+          <!-- <button mat-stroked-button class="buttons" (click)="fullyExpandNode(node)" [innerHTML]="node.expanded?'Collapse':'Expand'"></button> -->
+          <!-- <button mat-stroked-button class="buttons" (click)="onNodePrint(node,currNode)">Print</button> -->
+            <i style="align-self: center;"
+              [class]="
+                node.expanded
+                  ? 'uxf-icon uxf-resize-small buttons eca-button'
+                  : 'uxf-icon uxf-resize-large buttons eca-button'
+              "
+              (click)="fullyExpandNode(node)"
+              matTooltip="Fully expand node"
+            ></i>
+          <i class="uxf-icon uxf-print eca-button buttons" (click)="onNodePrint(node, currNode)" matTooltip="Print node and descendants"></i>
+          <mat-progress-bar
+            *ngIf="node.isLoading"
+            mode="indeterminate"
+            class="example-tree-progress-bar"
+          ></mat-progress-bar>
+        </div>
       </div>
-      {{ node.stringVal }}
-      <mat-progress-bar
-        *ngIf="node.isLoading"
-        mode="indeterminate"
-        class="example-tree-progress-bar"
-      ></mat-progress-bar>
     </mat-tree-node>
 
-    <mat-tree-node *matTreeNodeDef="let node; when: isLoad" matTreeNodePadding>
+    <mat-tree-node [class]="node.cssClass" *matTreeNodeDef="let node; when: isLoad" matTreeNodePadding>
       <button mat-button (click)="onLoadMore(node)">{{ node.stringVal }}</button>
     </mat-tree-node>
   </mat-tree>
+</div>
+<div class="loading-shade hiddenClass" *ngIf="loading" #loading_spinner>
+  <mat-progress-spinner mode="indeterminate" diameter="50"> </mat-progress-spinner>
 </div>

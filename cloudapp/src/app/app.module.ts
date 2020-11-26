@@ -1,8 +1,9 @@
+import { HelperService } from './helper-service.service';
 import { NgModule } from "@angular/core";
 import { HttpClientModule } from "@angular/common/http";
 import { BrowserModule } from "@angular/platform-browser";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
-import { MaterialModule, getTranslateModule } from "@exlibris/exl-cloudapp-angular-lib";
+import { MaterialModule, getTranslateModule, CloudAppRestService } from "@exlibris/exl-cloudapp-angular-lib";
 import { ToastrModule } from "ngx-toastr";
 import { MatTreeModule } from "@angular/material/tree";
 import { AppComponent } from "./app.component";
@@ -48,7 +49,7 @@ export function getToastrModule() {
     getTranslateModule(),
     getToastrModule(),
   ],
-  providers: [],
+  providers: [HelperService,CloudAppRestService],
   bootstrap: [AppComponent],
 })
 export class AppModule {}

@@ -14,26 +14,26 @@ li {
   height: unset;
   line-height: unset;
 }
-.printMe {
-  visibility: visible;
-  overflow: visible;
-  display: block !important;
-  float: none !important;
-  overflow-y: visible !important;
-}
-.buttons {
+div.buttons {
   float: right;
   margin-right: 70px;
+}
+i.buttons{
+  margin-left: 20px;
 }
 @media print {
   .mat-drawer-container,
   .mat-drawer-content {
     overflow: visible !important;
   }
+  .mat-tree
+  {
+    display: block !important;
+  }
   .printMe {
     visibility: visible;
     overflow: visible;
-    display: block !important;
+    // display: block !important;
     float: none !important;
     overflow-y: visible !important;
   }
@@ -50,19 +50,35 @@ li {
   .buttons {
     visibility: hidden;
   }
+  .hiddenClass 
+  {
+    display: none !important;
+  }
 }
-// page[size="A4"] {
-//   background: white;
-//   width: 21cm;
-//   height: 29.7cm;
-//   overflow: visible;
-//   display: block;
-//   margin: 0 auto;
-//   margin-bottom: 0.5cm;
-//   box-shadow: 0 0 0.5cm rgba(0, 0, 0, 0.5);
-// }
-// @page {
-//   size: A4;
-//   overflow: visible;
-//   margin: 0;
-// }
+page[size="A4"] {
+  background: white;
+  width: 21cm;
+  height: 29.7cm;
+  overflow: visible;
+  display: block;
+  margin: 0 auto;
+  margin-bottom: 0.5cm;
+  box-shadow: 0 0 0.5cm rgba(0, 0, 0, 0.5);
+}
+@page {
+  size: A4;
+  overflow: visible;
+  margin: 0;
+}
+.showIcons>*
+{
+  display: inline-block;
+}
+.hideIcons>div>div>i
+{
+  display: none !important;
+}
+.eca-button:hover
+{
+  cursor: pointer;
+}

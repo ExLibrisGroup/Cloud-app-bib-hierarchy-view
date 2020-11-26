@@ -1,5 +1,4 @@
 <div class="toShow" *ngIf="toShow; else no_records">
-
   <div class="printMe">
     <app-bib-tree (noNodes)="toShow = $event"></app-bib-tree>
   </div>
