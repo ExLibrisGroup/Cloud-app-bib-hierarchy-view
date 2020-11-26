@@ -320,22 +320,21 @@ export class BibDynamicTree implements OnDestroy {
           .pipe(
             switchMap((pageInfo: PageInfo) => {
               let observables = [];
-              let linkSet = new Set<string>(); // To remove duplicates 
+              let linkSet = new Set<string>(); // To remove duplicates
               let re: RegExp = new RegExp("/bibs/[0-9]+");
               for (let entity of pageInfo.entities) {
-                linkSet.add(re.exec(entity.link)[0])
+                linkSet.add(re.exec(entity.link)[0]);
               }
-              for (const link of Array.from(linkSet.values()))
-              {
-                            observables.push(
+              for (const link of Array.from(linkSet.values())) {
+                observables.push(
                   this.restService.call(link).pipe(
                     map((res) => {
-                      return { ...res};
+                      return { ...res };
                     })
                   )
                 );
               }
-  
+
               return forkJoin(observables);
             }),
             switchMap((res) => {
@@ -357,14 +356,12 @@ export class BibDynamicTree implements OnDestroy {
   };
 
   onHover(node: DynamicFlatNode, show: boolean) {
-    
-    if (show && node.cssClass.search('hideIcons')) {
+    if (show && node.cssClass.search("hideIcons")) {
       node.cssClass = node.cssClass.replace("hideIcons", "showIcons");
-    }else if (!show && node.cssClass.search('showIcons'))
-    {
-      node.cssClass = node.cssClass.replace("showIcons","hideIcons");
+    } else if (!show && node.cssClass.search("showIcons")) {
+      node.cssClass = node.cssClass.replace("showIcons", "hideIcons");
     }
-    console.log(node.cssClass)
+    console.log(node.cssClass);
   }
   getLevel = (node: DynamicFlatNode) => node.level;
 
